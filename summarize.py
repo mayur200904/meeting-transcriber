@@ -1,4 +1,4 @@
-#import openai
+import openai
 import os
 
 openai.api_key = os.getenv("YOUR_API_KEY")  # Use environment variable for safety
