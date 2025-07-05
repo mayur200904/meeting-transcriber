@@ -1,52 +1,71 @@
 import streamlit as st
-from st_audiorec import st_audiorec
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings
+import av
+import whisper
 import openai
 import tempfile
-import whisper
 import os
+import numpy as np
 
-# Set your OpenAI API key securely from Streamlit secrets
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Load Whisper model
 @st.cache_resource
-def load_whisper_model():
-    return whisper.load_model("base")  # you can use 'tiny', 'base', 'small', etc.
+def load_model():
+    return whisper.load_model("base")
 
-model = load_whisper_model()
+model = load_model()
 
-# UI title
-st.title("📝 Otter-like Meeting Transcriber")
-st.markdown("Record audio, transcribe it using Whisper, and summarize using GPT.")
+st.title("🎙️ Meeting Transcriber with Whisper + GPT")
 
-# Record audio from mic
-wav_audio_data = st_audiorec()
+st.markdown("Record your voice, transcribe using Whisper, and summarize with OpenAI GPT.")
 
-if wav_audio_data is not None:
-    st.audio(wav_audio_data, format="audio/wav")
-    st.info("✅ Audio recorded. Transcribing...")
+# Audio processor
+class AudioProcessor:
+    def __init__(self):
+        self.audio = b""
 
-    # Save audio to a temp file
+    def recv(self, frame: av.AudioFrame):
+        pcm = frame.to_ndarray().tobytes()
+        self.audio += pcm
+        return frame
+
+ctx = webrtc_streamer(
+    key="mic",
+    mode=WebRtcMode.SENDONLY,
+    in_audio=True,
+    client_settings=ClientSettings(
+        media_stream_constraints={"audio": True, "video": False},
+        rtc_configuration={}
+    ),
+    audio_receiver_size=1024,
+)
+
+if ctx and ctx.state.playing:
+    st.warning("🔴 Recording... Speak now.")
+    ctx.audio_receiver = AudioProcessor()
+
+elif ctx and not ctx.state.playing and hasattr(ctx, "audio_receiver") and ctx.audio_receiver.audio:
+    st.success("✅ Recording stopped. Processing...")
+
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        f.write(wav_audio_data)
-        audio_path = f.name
+        f.write(ctx.audio_receiver.audio)
+        temp_audio_path = f.name
 
-    # Transcribe audio using Whisper
+    # Transcribe with Whisper
     with st.spinner("Transcribing..."):
-        result = model.transcribe(audio_path)
+        result = model.transcribe(temp_audio_path)
         transcription = result["text"]
-
-    st.subheader("🗒️ Transcription")
+    st.subheader("📝 Transcription")
     st.write(transcription)
 
-    # Summarize using OpenAI
-    with st.spinner("Summarizing with GPT..."):
-        summary_prompt = f"Summarize the following meeting transcript:\n\n{transcription}"
+    # Summarize with GPT
+    with st.spinner("Summarizing..."):
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a helpful meeting assistant."},
-                {"role": "user", "content": summary_prompt}
+                {"role": "system", "content": "You're a meeting assistant."},
+                {"role": "user", "content": f"Summarize this meeting: {transcription}"}
             ],
             temperature=0.7,
             max_tokens=300
