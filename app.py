@@ -5,7 +5,7 @@ import streamlit as st
 from transcribe import transcribe_audio
 from summarize import summarize_text
 import tempfile
-from streamlit-audiorec import st_audiorec
+from streamlit_audiorec import st_audiorec
 
 st.title("🎙️ Live Meeting Recorder & Summarizer")
 
