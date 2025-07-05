@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-pip install streamlit-audiorec
+#pip install streamlit-audiorec
 
 import streamlit as st
 from transcribe import transcribe_audio
