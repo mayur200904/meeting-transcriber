@@ -1,0 +1,7 @@
+streamlit
+openai
+torch
+torchaudio
+git+https://github.com/openai/whisper.git
+streamlit-audiorec
+sqlalchemy
