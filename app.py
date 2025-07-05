@@ -1,36 +1,57 @@
-# -*- coding: utf-8 -*-
-#pip install streamlit-audiorec
-
 import streamlit as st
-from transcribe import transcribe_audio
-from summarize import summarize_text
+from st_audiorec import st_audiorec
+import openai
 import tempfile
-from streamlit_audiorec import st_audiorec
+import whisper
+import os
 
-st.title("🎙️ Live Meeting Recorder & Summarizer")
+# Set your OpenAI API key securely from Streamlit secrets
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-st.markdown("### 🎤 Record your voice")
+# Load Whisper model
+@st.cache_resource
+def load_whisper_model():
+    return whisper.load_model("base")  # you can use 'tiny', 'base', 'small', etc.
+
+model = load_whisper_model()
+
+# UI title
+st.title("📝 Otter-like Meeting Transcriber")
+st.markdown("Record audio, transcribe it using Whisper, and summarize using GPT.")
+
+# Record audio from mic
 wav_audio_data = st_audiorec()
 
 if wav_audio_data is not None:
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
-        tmpfile.write(wav_audio_data)
-        audio_path = tmpfile.name
+    st.audio(wav_audio_data, format="audio/wav")
+    st.info("✅ Audio recorded. Transcribing...")
 
-    st.success("✅ Audio recorded!")
-    st.info("Transcribing...")
+    # Save audio to a temp file
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        f.write(wav_audio_data)
+        audio_path = f.name
 
-    transcript = transcribe_audio(audio_path)
-    st.text_area("📝 Transcript", transcript, height=300)
+    # Transcribe audio using Whisper
+    with st.spinner("Transcribing..."):
+        result = model.transcribe(audio_path)
+        transcription = result["text"]
 
-    if st.button("🔍 Summarize"):
-        summary = summarize_text(transcript)
-        st.markdown("### 📌 Summary")
-        st.markdown(summary)
-from database import save_to_db
+    st.subheader("🗒️ Transcription")
+    st.write(transcription)
 
-title = st.text_input("Give a title for this meeting:", value="Untitled Meeting")
+    # Summarize using OpenAI
+    with st.spinner("Summarizing with GPT..."):
+        summary_prompt = f"Summarize the following meeting transcript:\n\n{transcription}"
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful meeting assistant."},
+                {"role": "user", "content": summary_prompt}
+            ],
+            temperature=0.7,
+            max_tokens=300
+        )
+        summary = response.choices[0].message["content"]
 
-if st.button("💾 Save to Database"):
-    save_to_db(title, transcript, summary)
-    st.success("Saved to database!")
+    st.subheader("📋 Summary")
+    st.write(summary)
